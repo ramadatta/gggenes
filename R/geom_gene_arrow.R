@@ -39,7 +39,7 @@
 #' only the arrowhead will be drawn, compressed to the length of the gene.
 #' @param arrowhead_height `grid::unit()` object giving the height of the
 #' arrowhead.  Defaults to 4 mm.
-#' @param arrow_body_height `grid::unit()` object giving the height of the body
+#' @param height `grid::unit()` object giving the height of the body
 #' of the arrow. Defaults to 3 mm.
 #'
 #' @examples
@@ -62,7 +62,6 @@ geom_gene_arrow <- function(
   inherit.aes = TRUE,
   arrowhead_width = grid::unit(4, "mm"),
   arrowhead_height = grid::unit(4, "mm"),
-  arrow_body_height = grid::unit(3, "mm"),
   ...
 ) {
   ggplot2::layer(
@@ -72,7 +71,6 @@ geom_gene_arrow <- function(
       na.rm = na.rm,
       arrowhead_width = arrowhead_width,
       arrowhead_height = arrowhead_height,
-      arrow_body_height = arrow_body_height,
       ...
     )
   )
@@ -102,28 +100,65 @@ GeomGeneArrow <- ggplot2::ggproto("GeomGeneArrow", ggplot2::Geom,
       )
     )
   },
+
+  setup_data = function(data, params) {
+
+    # Reverse non-forward genes
+    if ("forward" %in% names(data)) {
+      data[data$forward == 1, c("xmin", "xmax")] <- 
+        data[data$forward == 1, c("xmax", "xmin")]
+    }
+
+    # Set arrow body height
+    data$height <- data$height %||%
+      params$height %||% (resolution(data$y, FALSE) * 0.9)
+
+    transform(data,
+      ymin = y - height / 2, ymax = y + height / 2, height = NULL
+    )
+  },
+
   draw_panel = function(
     data,
     panel_scales,
     coord,
     arrowhead_width,
     arrowhead_height,
-    arrow_body_height
+    height
   ) {
 
-    data <- coord$transform(data, panel_scales)
+    print(data)
 
-    # 
-
-    gt <- grid::gTree(
-      data = data,
-      cl = "genearrowtree",
-      arrowhead_width = arrowhead_width,
-      arrowhead_height = arrowhead_height,
-      arrow_body_height = arrow_body_height
+    data <- data.frame(
+      x = as.vector(rbind(
+        data$xmin,
+        data$xmin,
+        data$xmin + (0.8 * (data$xmax - data$xmin)),
+        data$xmin + (0.8 * (data$xmax - data$xmin)),
+        data$xmax,
+        data$xmin + (0.8 * (data$xmax - data$xmin)),
+        data$xmin + (0.8 * (data$xmax - data$xmin)),
+        data$xmin
+      )),
+      y = as.vector(rbind(
+        data$ymin,
+        data$ymax,
+        data$ymax,
+        data$ymax + (0.2 * (data$ymax - data$ymin)),
+        data$ymin + (0.5 * (data$ymax - data$ymin)),
+        data$ymin - (0.2 * (data$ymax - data$ymin)),
+        data$ymin,
+        data$ymin
+      )),
+      fill = rep(data$fill, each = 8),
+      # alpha = rep(data$alpha, each = 8),
+      size = rep(data$size, each = 8),
+      linetype = rep(data$linetype, each = 8),
+      group = rep(1:(nrow(data)), each = 8),
+      row.names = 1:(nrow(data) * 8)
     )
-    gt$name <- grid::grobName(gt, "geom_gene_arrow")
-    gt
+
+    GeomPolygon$draw_panel(data, panel_scales, coord)
   }
 )
 
@@ -132,29 +167,15 @@ GeomGeneArrow <- ggplot2::ggproto("GeomGeneArrow", ggplot2::Geom,
 makeContent.genearrowtree <- function(x) {
 
   data <- x$data
+  print(data)
 
   # Prepare grob for each gene
   grobs <- lapply(1:nrow(data), function(i) {
 
     gene <- data[i, ]
 
-    # Reverse non-forward genes
-    if (gene$forward != TRUE) {
-      gene[, c("xmin", "xmax")] <- gene[, c("xmax", "xmin")]
-    }
-
     # Determine orientation
     orientation <- ifelse(gene$xmax > gene$xmin, 1, -1)
-
-    # Arrowhead defaults to 4 mm, unless the gene is shorter in which case the
-    # gene is 100% arrowhead
-    arrowhead_width <- as.numeric(grid::convertWidth(x$arrowhead_width, "native"))
-    gene_width <- abs(gene$xmax - gene$xmin)
-    arrowhead_width <- ifelse(
-      arrowhead_width > gene_width,
-      gene_width,
-      arrowhead_width
-    )
 
     # Calculate x coordinate of flange
     flangex <- (-orientation * arrowhead_width) + gene$xmax
@@ -162,7 +183,12 @@ makeContent.genearrowtree <- function(x) {
     # Set arrow and arrowhead heights; it's convenient to divide these by two
     # for calculating y coordinates on the polygon
     arrowhead_height <- as.numeric(grid::convertHeight(x$arrowhead_height, "native")) / 2
-    arrow_body_height <- as.numeric(grid::convertHeight(x$arrow_body_height, "native")) / 2
+
+    # Arrowhead defaults to 4 mm, unless the gene is shorter in which case the
+    # gene is 100% arrowhead
+    params$arrowhead_width <- as.numeric(
+      grid::convertWidth(params$arrowhead_width, "native")
+    )
 
     # Create polygon grob
     pg <- grid::polygonGrob(
