@@ -1,0 +1,194 @@
+---
+title: "genemap"
+author: "Prakki Sai Rama Sridatta"
+date: "10/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Load Libraries...
+Load coordinates
+
+```{r cars}
+library(gggenes)
+library(ggplot2)
+library(RColorBrewer)
+library(dplyr)
+
+setwd("/home/prakki/sw/prokka2gggenes/Analysis1")
+
+coords <- read.table("for_gggenes.coords",header = FALSE, sep = "\t")
+head(coords)
+
+names(coords) <- c("molecule","start","end","source","gene","direction")
+head(coords)
+#coords
+
+c25 <- c(
+  "dodgerblue2", "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", "gold1",
+  "skyblue2", "#FB9A99", # lt pink
+  "palegreen2",
+  "#CAB2D6", # lt purple
+  "#FDBF6F", # lt orange
+  "gray70", "khaki2",
+  "maroon", "orchid1", "deeppink1", "blue1", "steelblue4",
+  "darkturquoise", "green1", "yellow4", "yellow3",
+  "darkorange4", "brown"
+)
+
+target=c("blaNDM-1")
+
+match = which(coords$gene %in% target)
+#match
+getThese = unique(as.vector(mapply(seq,match-5,match+5)))
+#getThese
+getThese = getThese[getThese > 0 & getThese <= nrow(coords)]
+#getThese
+updown_stream_coords <- coords[getThese,]
+#updown_stream_coords
+
+dummies <- make_alignment_dummies(
+  updown_stream_coords,
+  aes(xmin = start, xmax = end, y = molecule, id = gene),
+  on = "blaNDM-1"
+)
+```
+
+### Plot Align according to specific gene
+
+```{r cars2, fig.width = 15,fig.height = 8}
+ggplot(updown_stream_coords, aes(xmin = start, xmax = end, y = molecule, fill = gene, label = gene)) +
+  geom_gene_arrow() +
+  geom_gene_label(align = "left") +
+  geom_blank(data = dummies) +
+  facet_wrap(~ molecule, scales = "free", ncol = 1) +
+  scale_fill_manual(values = c25) +
+  theme_genes()
+```
+
+### Align according to specific gene + change the arrow sizes and arrow heads
+
+```{r cars3, fig.width = 15,fig.height = 8}
+ggplot(updown_stream_coords, aes(xmin = start, xmax = end, y =molecule, fill = gene, label = gene)) +
+  geom_gene_arrow(arrowhead_height = unit(5, "mm"), arrowhead_width = unit(3, "mm")) +
+  geom_gene_label(align = "left") +
+  geom_blank(data = dummies) +
+  facet_wrap(~ molecule, scales = "free", ncol = 1) +
+  scale_fill_manual(values = c25) +
+  theme_genes()
+```
+
+### Plot labels above genes using geom_text
+
+```{r cars4, fig.width = 15,fig.height = 8}
+ggplot(updown_stream_coords, aes(xmin = start, xmax = end, y = molecule, fill = gene)) +
+  geom_gene_arrow() +
+  facet_wrap(~ molecule, scales = "free", ncol = 1) +
+  scale_fill_manual(values = c25) +
+  theme_genes() + 
+  geom_text(data=updown_stream_coords %>% mutate(start = (start + end)/2), aes(x=start, label = gene), nudge_y = 0.2 )
+```
+
+### Align by a single gene as well as plot labels above genes using geom_text
+
+```{r cars5, fig.width = 18,fig.height = 10}
+ggplot(updown_stream_coords, aes(xmin = start, xmax = end, y = molecule, fill = gene)) +
+  geom_gene_arrow() +
+  geom_blank(data = dummies) +
+  facet_wrap(~ molecule, scales = "free", ncol = 1) +
+  scale_fill_manual(values = c25) +
+  theme_genes() + 
+  geom_text(data=updown_stream_coords %>% mutate(start = (start + end)/2), aes(x=start, label = gene), nudge_y = 0.4 )
+```
+
+### Align by a single gene + plot labels above genes using geom_text + Cluster similar genomes according to genes
+
+```{r cars6, fig.width = 18,fig.height = 10}
+# Creating a presence/absence matrix for example genes
+PA_matrix <- as.data.frame(with(updown_stream_coords, table(molecule, gene)) > 0L) +0L
+
+# Sorting the presence/absence matrix for example genes
+sorted_PA_matrix <- PA_matrix[do.call(order,as.data.frame(PA_matrix)),]
+#sorted_PA_matrix
+sorted_genomes <- row.names(sorted_PA_matrix)
+
+# Creating sorted_dummies and sorted_updown_stream_coords which the final output figure should reflect
+sorted_dummies <- dummies[order(unlist(sapply(dummies$molecule, function(x) which(sorted_genomes == x)))),]
+sorted_updown_stream_coords <- updown_stream_coords[order(unlist(sapply(updown_stream_coords$molecule, function(x) which(sorted_genomes == x)))),]
+
+# Convert molecule variable to a factor
+sorted_updown_stream_coords$molecule <- factor(sorted_updown_stream_coords$molecule, levels = unique(sorted_updown_stream_coords$molecule))
+sorted_dummies$molecule <- factor(sorted_dummies$molecule, levels = unique(sorted_dummies$molecule))
+
+ggplot(sorted_updown_stream_coords, aes(xmin = start, xmax = end, y = factor(molecule), fill = gene)) +
+  geom_gene_arrow() +
+  geom_blank(data = sorted_dummies) +
+  facet_wrap(~ molecule, scales = "free", ncol = 1) +
+  scale_fill_manual(values = c25) +
+  theme_genes() + 
+  geom_text(data=sorted_updown_stream_coords %>% mutate(start = (start + end)/2), aes(x=start, label = gene), nudge_y = 0.4 )
+```
+
+### Align by a single gene + plot labels above genes using geom_text + Cluster similar genomes according to genes + Change size of labels + Change grey line in the center
+
+```{r cars7, fig.width = 18,fig.height = 10}
+ggplot(sorted_updown_stream_coords, aes(xmin = start, xmax = end, y = factor(molecule), fill = gene)) +
+  geom_gene_arrow() +
+  geom_blank(data = sorted_dummies) +
+  facet_wrap(~ molecule, scales = "free", ncol = 1) +
+  scale_fill_manual(values = c25) +
+  theme_genes()  %+replace% theme(panel.grid.major.y = element_line(colour = "red")) + 
+  geom_text(data=sorted_updown_stream_coords %>% mutate(start = (start + end)/2), aes(x=start, label = gene), nudge_y = 0.4, size =3 )
+```
+
+
+# Keep only genome if the gene content is exactly same for multiple
+
+```{r cars8, fig.width = 18,fig.height = 10}
+# Creating a presence/absence matrix for example genes
+PA_matrix <- as.data.frame(with(updown_stream_coords, table(molecule, gene)) > 0L) +0L
+
+# Sorting the presence/absence matrix for example genes
+sorted_PA_matrix <- PA_matrix[do.call(order,as.data.frame(PA_matrix)),]
+#sorted_PA_matrix
+distict_sorted_PA_matrix <- distinct(sorted_PA_matrix)
+#distict_sorted_PA_matrix
+sorted_genomes <- row.names(distict_sorted_PA_matrix)
+
+# Creating sorted_dummies and sorted_updown_stream_coords which the final output figure should reflect
+sorted_dummies <- dummies[order(unlist(sapply(dummies$molecule, function(x) which(sorted_genomes == x)))),]
+sorted_updown_stream_coords <- updown_stream_coords[order(unlist(sapply(updown_stream_coords$molecule, function(x) which(sorted_genomes == x)))),]
+
+# Convert molecule variable to a factor
+sorted_updown_stream_coords$molecule <- factor(sorted_updown_stream_coords$molecule, levels = unique(sorted_updown_stream_coords$molecule))
+sorted_dummies$molecule <- factor(sorted_dummies$molecule, levels = unique(sorted_dummies$molecule))
+
+ggplot(sorted_updown_stream_coords, aes(xmin = start, xmax = end, y = factor(molecule), fill = gene)) +
+  geom_gene_arrow() +
+  geom_blank(data = sorted_dummies) +
+  facet_wrap(~ molecule, scales = "free", ncol = 1) +
+  scale_fill_manual(values = c25) +
+  theme_genes()  %+replace% theme(panel.grid.major.y = element_line(colour = "red")) + 
+  geom_text(data=sorted_updown_stream_coords %>% mutate(start = (start + end)/2), aes(x=start, label = gene), nudge_y = 0.4, size =3 )
+```
+
+
+### in progress --> Aligned Gene blaNDM-1 + Label on top + sorted genomes based on genes + forward reverse on the same strand
+``` r
+# sorted_updown_stream_coords %>%
+#   mutate(direction = sample(c(-1, 1), 110, T)) %>%
+#   ggplot(aes(xmin = start, xmax = end, y = factor(molecule), fill = gene, forward = direction)) +
+#   geom_gene_arrow() +
+#   geom_blank(data = sorted_dummies) +
+#   facet_wrap(~ molecule, scales = "free", ncol = 1) +
+#   scale_fill_manual(values = c25) +
+#   theme_genes() +
+#   geom_text(data=sorted_updown_stream_coords %>% mutate(start = (start + end)/2), aes(x=start, label = gene), nudge_y = 0.4 )
+#
+``` 
